@@ -1,0 +1,74 @@
+version: 2
+
+mart_transactions:
+  description: "Mart containing aggregated transaction data with merchant details and business metrics."
+  columns:
+    - name: transaction_id
+      description: "Unique identifier for each transaction."
+    - name: merchant_id
+      description: "Foreign key referencing dim_merchant."
+      tests:
+        - not_null
+    - name: merchant_name
+      description: "Name of the merchant from dim_merchant."
+    - name: amount
+      description: "Amount of the transaction in USD."
+    - name: status
+      description: "Status of the transaction (COMPLETED, FAILED, PENDING)."
+      tests:
+        - accepted_values:
+            values: ['COMPLETED', 'FAILED', 'PENDING']
+        - failed_status_test: # Custom test to fail if status='CANCELLED'
+            values: ['CANCELLED']
+    - name: customer_id
+      description: "Foreign key referencing dim_customer."
+    - name: transaction_date
+      description: "Date of the transaction."
+    - name: payment_method
+      description: "Payment method used for the transaction (CREDIT_CARD, DEBIT_CARD, UPI)."
+    - name: total_revenue
+      description: "Total revenue from completed transactions."
+      tests:
+        - generic_test:
+            function: "test_total_revenue_gte_zero"
+    - name: failure_rate_pct
+      description: "Failure rate percentage of transactions."
+      tests:
+        - generic_test:
+            function: "test_failure_rate_between_0_and_100"
+
+tests:
+  - name: test_total_revenue_gte_zero
+    severity: error
+    description: "Ensure total revenue is greater than or equal to zero."
+    sql: |
+      SELECT
+        transaction_id,
+        amount,
+        status,
+        merchant_id,
+        customer_id,
+        transaction_date,
+        payment_method,
+        SUM(amount) AS total_revenue
+      FROM {{ ref('mart_transactions') }}
+      WHERE status = 'COMPLETED'
+      GROUP BY transaction_id, amount, status, merchant_id, customer_id, transaction_date, payment_method
+      HAVING SUM(amount) < 0
+
+  - name: test_failure_rate_between_0_and_100
+    severity: error
+    description: "Ensure failure rate percentage is between 0 and 100."
+    sql: |
+      WITH failure_rate AS (
+        SELECT
+          COUNT(CASE WHEN status = 'FAILED' THEN 1 END) / COUNT(*) * 100 AS failure_rate_pct
+        FROM {{ ref('mart_transactions') }}
+      )
+      SELECT * FROM failure_rate WHERE failure_rate_pct < 0 OR failure_rate_pct > 100
+
+  - name: failed_status_test
+    severity: error
+    description: "Ensure no transactions have status 'CANCELLED'."
+    sql: |
+      SELECT * FROM {{ ref('mart_transactions') }} WHERE status = 'CANCELLED'
