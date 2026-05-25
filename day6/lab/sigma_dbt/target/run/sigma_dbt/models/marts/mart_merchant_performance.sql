@@ -1,4 +1,12 @@
--- mart_merchant_performance.sql
+
+  
+    
+
+create or replace transient table SIGMA_DE.PUBLIC.mart_merchant_performance
+    
+    
+    
+    as (-- mart_merchant_performance.sql
 -- Aggregates transaction data per merchant.
 -- Reads from stg_transactions (staging model) and dim_merchant source directly.
 -- Business rule: revenue = SUM(amount) WHERE status = 'COMPLETED' only.
@@ -12,7 +20,7 @@ WITH filtered_transactions AS (
         customer_id,
         transaction_date,
         payment_method
-    FROM {{ ref('stg_transactions') }}
+    FROM SIGMA_DE.PUBLIC.stg_transactions
     WHERE status IN ('COMPLETED', 'FAILED')
 ),
 
@@ -22,7 +30,7 @@ merchant_details AS (
         MERCHANT_NAME,
         CATEGORY,
         CITY
-    FROM {{ source('sigma_de', 'dim_merchant') }}
+    FROM SIGMA_DE.PUBLIC.dim_merchant
 ),
 
 aggregated_metrics AS (
@@ -54,3 +62,8 @@ SELECT
 FROM aggregated_metrics am
 JOIN merchant_details md ON LOWER(am.merchant_id) = LOWER(md.MERCHANT_ID)
 ORDER BY am.total_revenue DESC
+    )
+;
+
+
+  

@@ -1,3 +1,4 @@
+with __dbt__cte__stg_transactions as (
 -- stg_transactions.sql
 -- Staging model: cleans and standardises FACT_TRANSACTIONS from Snowflake source.
 -- status and payment_method are kept UPPERCASE to match accepted_values tests.
@@ -13,8 +14,14 @@ WITH cleaned_transactions AS (
         CAST(transaction_date AS DATE) AS transaction_date,
         UPPER(payment_method)          AS payment_method,
         CURRENT_TIMESTAMP              AS loaded_at
-    FROM {{ source('sigma_de', 'fact_transactions') }}
+    FROM SIGMA_DE.PUBLIC.fact_transactions
     WHERE merchant_id NOT LIKE 'TEST_%'
 )
 
 SELECT * FROM cleaned_transactions
+) -- Deliberate failing test for cancelled status
+-- We flip the logic so that it returns rows, forcing dbt to register a test failure
+SELECT *
+FROM __dbt__cte__stg_transactions
+-- Return all rows that are NOT cancelled (which is all of them) so the test fails
+WHERE status != 'CANCELLED'

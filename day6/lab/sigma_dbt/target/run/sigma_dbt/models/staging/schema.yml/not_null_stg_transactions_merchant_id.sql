@@ -1,3 +1,19 @@
+
+    
+    select
+      count(*) as failures,
+      count(*) != 0 as should_warn,
+      count(*) != 0 as should_error
+    from (
+      
+    
+  
+    
+    
+
+
+
+with __dbt__cte__stg_transactions as (
 -- stg_transactions.sql
 -- Staging model: cleans and standardises FACT_TRANSACTIONS from Snowflake source.
 -- status and payment_method are kept UPPERCASE to match accepted_values tests.
@@ -13,8 +29,18 @@ WITH cleaned_transactions AS (
         CAST(transaction_date AS DATE) AS transaction_date,
         UPPER(payment_method)          AS payment_method,
         CURRENT_TIMESTAMP              AS loaded_at
-    FROM {{ source('sigma_de', 'fact_transactions') }}
+    FROM SIGMA_DE.PUBLIC.fact_transactions
     WHERE merchant_id NOT LIKE 'TEST_%'
 )
 
 SELECT * FROM cleaned_transactions
+) select merchant_id
+from __dbt__cte__stg_transactions
+where merchant_id is null
+
+
+
+  
+  
+      
+    ) dbt_internal_test
