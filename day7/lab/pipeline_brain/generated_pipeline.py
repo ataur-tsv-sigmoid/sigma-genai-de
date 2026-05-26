@@ -46,6 +46,15 @@ def transform_silver(spark, bronze_path, merchants_path, output_path, run_date):
                    .where(col("ingestion_timestamp") == run_date)
                    .cache())  # Cache the small merchants table
 
+    # Schema validation
+    required_txn_cols = {"transaction_id", "merchant_id", "amount", "transaction_date"}
+    if not required_txn_cols.issubset(set(transactions_df.columns)):
+        raise ValueError(f"Missing required columns in transactions data: {required_txn_cols - set(transactions_df.columns)}")
+        
+    required_merchant_cols = {"merchant_id", "merchant_name", "category", "city"}
+    if not required_merchant_cols.issubset(set(merchants_df.columns)):
+        raise ValueError(f"Missing required columns in merchants data: {required_merchant_cols - set(merchants_df.columns)}")
+
     # Cast columns to correct types
     transactions_df = (transactions_df.withColumn("amount", col("amount").cast(FloatType()))
                         .withColumn("transaction_date", col("transaction_date").cast(DateType()))
@@ -66,32 +75,38 @@ def transform_silver(spark, bronze_path, merchants_path, output_path, run_date):
 
     # Write as Parquet partitioned by date
     transactions_enriched_df.write.mode("overwrite").partitionBy("transaction_date").parquet(output_path + "/silver/transactions")
+    print(f"Transformed and wrote {transactions_enriched_df.count()} records to Silver layer.")
 
 def main(spark, input_path, output_path, run_date, run_id):
-    # Ingest Bronze layer
-    ingest_bronze(spark, input_path, output_path, run_date, run_id)
+    try:
+        # Ingest Bronze layer
+        ingest_bronze(spark, input_path, output_path, run_date, run_id)
 
-    # Transform Silver layer
-    transform_silver(spark, output_path, output_path, output_path, run_date)
+        # Transform Silver layer
+        transform_silver(spark, output_path, output_path, output_path, run_date)
 
-    # Write run metadata summary to a JSON file
-    metadata = {"run_date": run_date, "run_id": run_id, "status": "COMPLETE"}
-    with open(os.path.join(output_path, "run_metadata.json"), "w") as f:
-        json.dump(metadata, f)
+        # Write run metadata summary to a JSON file
+        metadata = {"run_date": run_date, "run_id": run_id, "status": "COMPLETE"}
+        with open(os.path.join(output_path, "run_metadata.json"), "w") as f:
+            json.dump(metadata, f)
+    except Exception as e:
+        print(f"Pipeline execution failed: {e}")
+        raise
 
 if __name__ == "__main__":
+    import os
     # Initialize Spark session
     spark = (SparkSession.builder
             .appName("Sigma DataTech Transaction Analytics Pipeline")
              .getOrCreate())
 
     # Define input and output paths
-    input_path = "s3://your-bucket/bronze"
-    output_path = "s3://your-bucket/silver"
+    input_path = os.environ.get("INPUT_PATH")
+    output_path = os.environ.get("OUTPUT_PATH")
 
     # Define run date and run ID
-    run_date = "2026-05-27"
-    run_id = "run_id_12345"
+    run_date = os.environ.get("RUN_DATE", "2026-05-27")
+    run_id = os.environ.get("RUN_ID", "run_id_12345")
 
     # Execute the pipeline
     main(spark, input_path, output_path, run_date, run_id)
