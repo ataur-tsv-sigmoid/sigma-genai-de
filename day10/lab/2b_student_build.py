@@ -60,7 +60,10 @@ def sql_checker_node(state: CheckerState) -> dict:
     Return: {"is_safe": bool, "check_reason": str}
     ~4 lines of code.
     """
-    pass  # ← YOUR CODE HERE
+    sql = state.get("sql", "")
+    is_safe = "where" in sql.lower()
+    check_reason = "SQL query contains a WHERE clause" if is_safe else "No WHERE clause found in SQL query"
+    return {"is_safe": is_safe, "check_reason": check_reason}
 
 
 # ── STEP 3: safe_executor_node ────────────────────────────────────────────────
@@ -76,7 +79,18 @@ def safe_executor_node(state: CheckerState) -> dict:
         return {"result": "BLOCKED: " + state["check_reason"]}
     ~10 lines of code.
     """
-    pass  # ← YOUR CODE HERE
+    if state["is_safe"]:
+        try:
+            conn = duckdb.connect(DB_PATH, read_only=True)
+            result = conn.execute(state["sql"]).fetchdf()
+            conn.close()
+            if result.empty:
+                return {"result": "Query returned 0 rows."}
+            return {"result": result.to_string(index=False, max_rows=20)}
+        except Exception as e:
+            return {"result": f"SQL ERROR: {e}"}
+    else:
+        return {"result": "BLOCKED: " + state["check_reason"]}
 
 
 # ── STEP 4: Routing function ──────────────────────────────────────────────────
@@ -90,7 +104,7 @@ def route_by_safety(state: CheckerState) -> str:
     Return "blocked" if state["is_safe"] is False.
     1 line of code.
     """
-    pass  # ← YOUR CODE HERE
+    return "execute" if state["is_safe"] else "blocked"
 
 
 # ── STEP 5: Build and wire the graph ─────────────────────────────────────────
@@ -102,29 +116,25 @@ def build_checker_graph():
     g = StateGraph(CheckerState)
 
     # Add nodes
-    # g.add_node("check",   ???)
-    # g.add_node("execute", ???)   # safe path
-    # g.add_node("blocked", ???)   # unsafe path (same function, different node name)
-    pass  # ← replace this pass and uncomment the add_node lines
+    g.add_node("check", sql_checker_node)
+    g.add_node("execute", safe_executor_node)   # safe path
+    g.add_node("blocked", safe_executor_node)   # unsafe path (same function, different node name)
 
     # Set the entry point (first node to run)
-    # g.set_entry_point("???")
-    pass  # ← uncomment and complete
+    g.set_entry_point("check")
 
     # Add conditional edges FROM "check" node
     # After sql_checker_node runs, LangGraph calls route_by_safety(state)
     # and follows the edge whose key matches the returned string.
-    # g.add_conditional_edges(
-    #     "check",
-    #     route_by_safety,
-    #     {"execute": "execute", "blocked": "blocked"}
-    # )
-    pass  # ← uncomment and complete
+    g.add_conditional_edges(
+        "check",
+        route_by_safety,
+        {"execute": "execute", "blocked": "blocked"}
+    )
 
     # Both paths end at END
-    # g.add_edge("execute", END)
-    # g.add_edge("blocked", END)
-    pass  # ← uncomment and complete
+    g.add_edge("execute", END)
+    g.add_edge("blocked", END)
 
     return g.compile()
 
